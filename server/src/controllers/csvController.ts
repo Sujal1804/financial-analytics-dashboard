@@ -9,11 +9,13 @@ export const exportCSV = async (req: Request, res: Response) => {
     const { columns, ...filters } = req.body;
     
     // Provide default columns if none are provided
-    const selectedColumns = Array.isArray(columns) && columns.length > 0 
+    const selectedColumns: string[] = Array.isArray(columns) && columns.length > 0 
       ? columns 
       : ['date', 'amount', 'category', 'description', 'status'];
     
     console.log('Selected columns:', selectedColumns);
+    console.log('Selected columns type:', typeof selectedColumns);
+    console.log('Selected columns is array:', Array.isArray(selectedColumns));
     
     const query: any = {};
     if (filters.category) query.category = filters.category;
@@ -22,7 +24,13 @@ export const exportCSV = async (req: Request, res: Response) => {
     if (filters.date) query.date = { $gte: new Date(filters.date as string) };
     if (filters.amount) query.amount = Number(filters.amount);
     
-    let transactions = await Transaction.find(query).select(selectedColumns.join(' '));
+    // Use selectedColumns directly since we know it's an array
+    const columnsToSelect = selectedColumns.join(' ');
+    console.log('Columns to select for query:', columnsToSelect);
+    
+    let transactions = await Transaction.find(query).select(columnsToSelect);
+    console.log('Raw transactions from DB:', transactions.length);
+    
     transactions = transactions.map((t: any) => {
       const flat: any = {};
       selectedColumns.forEach(col => {
@@ -37,9 +45,24 @@ export const exportCSV = async (req: Request, res: Response) => {
       });
       return flat;
     });
+    
     console.log('Transactions to export:', transactions);
+    console.log('Final selectedColumns before CSV generation:', selectedColumns);
+    
+    // Ensure we have valid data and columns before generating CSV
+    if (!Array.isArray(transactions) || !Array.isArray(selectedColumns)) {
+      throw new Error('Invalid data format for CSV generation');
+    }
+    
     const fileName = `transactions_${Date.now()}.csv`;
+    console.log('About to call generateCSV with:', { 
+      transactionsLength: transactions.length, 
+      selectedColumns, 
+      selectedColumnsType: typeof selectedColumns,
+      fileName 
+    });
     const csvPath = await generateCSV(transactions, selectedColumns, fileName);
+    
     res.download(csvPath, fileName, err => {
       if (err) {
         console.error('CSV download error:', err);
